@@ -4,6 +4,7 @@ const port = process.env.PORT || 5000
 require("dotenv").config();
 const jwt = require('jsonwebtoken');
 const cors = require('cors')
+const stripe = require('stripe')('sk_test_51OBh4tAME8VR4WS7pzC0Wl8eeq4XSdKdI08JXomw7Aos0xv9Io5sU82AqOJ8Zs3grtVi3EIl4Rjugm7kHnUINn5g00LVMdcuyM')
 
 
 //meddleware ...............................
@@ -51,6 +52,7 @@ async function run() {
         const menuCollection = client.db("foodDb").collection("menu");
         const reviewCollection = client.db("foodDb").collection("review");
         const cartCollection = client.db("foodDb").collection("carts");
+        const paymentCollection = client.db("foodDb").collection("payments");
 
 
         // jwt implement.................................
@@ -159,6 +161,45 @@ async function run() {
             res.send(result)
         })
 
+
+
+        // payment intent .......................
+        app.post("/create-payment-intent", async(req, res) => {
+            const { price } = req.body;
+            const amount = price * 100;
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: "usd",
+                payment_method_types: [
+                    "card"
+                ]
+
+            });
+
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+        //   payment api ......................
+        app.post('/payment', async(req, res) => {
+            const pay = req.body;
+            const result = await paymentCollection.insertOne(pay)
+            const query = { _id: { $in: pay.cartItemId.map(id => new ObjectId(id)) } }
+            const deleted = await cartCollection.deleteMany(query)
+            res.send({ result, deleted })
+        })
+        app.get('/payment', verifyJwt, async(req, res) => {
+            const email = req.query.email;
+            const decodedEmail = req.decoded.email;
+            if (email !== decodedEmail) {
+                return res.status(403).send({ error: true, message: 'Unathorized user' })
+            }
+            const query = { email: email }
+            const result = await paymentCollection.find(query).toArray()
+            res.send(result)
+
+
+        })
 
 
         // Send a ping to confirm a successful connection
